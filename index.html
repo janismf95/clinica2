@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diario Salute - Paziente</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f7f4; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); width: 100%; max-width: 400px; }
+        h2 { color: #2c3e50; text-align: center; margin-bottom: 25px; }
+        .label-group { font-size: 13px; font-weight: bold; color: #7f8c8d; margin-top: 15px; display: block; text-transform: uppercase; }
+        input { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #dcdfe6; border-radius: 8px; box-sizing: border-box; font-size: 16px; }
+        button { width: 100%; padding: 14px; background: #27ae60; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; transition: 0.3s; margin-top: 10px; }
+        .btn-reg { background: #3498db; }
+        .logout-btn { background: transparent; color: #e74c3c; width: auto; padding: 5px; margin: 0; font-size: 12px; text-decoration: underline; cursor: pointer; float: right; border: none; }
+        .switch-auth { font-size: 13px; color: #7f8c8d; cursor: pointer; text-align: center; display: block; margin-top: 15px; }
+        
+        /* Stili Chat */
+        #chat-box-paziente { height: 150px; overflow-y: auto; border: 1px solid #eee; padding: 10px; margin-top: 10px; background: #fdfdfd; border-radius: 8px; font-size: 14px; display: flex; flex-direction: column; gap: 5px; }
+        .msg { padding: 6px 10px; border-radius: 10px; max-width: 80%; }
+        .msg-paziente { align-self: flex-end; background: #dcf8c6; color: #333; }
+        .msg-medico { align-self: flex-start; background: #ebebeb; color: #333; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div id="auth-section">
+        <h2 id="auth-title">Accesso Paziente</h2>
+        <div id="reg-fields" style="display:none">
+            <input type="text" id="nome" placeholder="Nome">
+            <input type="text" id="cognome" placeholder="Cognome">
+        </div>
+        <input type="email" id="email" placeholder="Email">
+        <input type="password" id="pass" placeholder="Password">
+        <button id="btn-login" onclick="handleAuth('login')">ACCEDI</button>
+        <button id="btn-reg" class="btn-reg" onclick="handleAuth('reg')" style="display:none">REGISTRATI</button>
+        <span class="switch-auth" id="toggle-auth" onclick="toggleAuthMode()">Non hai un account? Registrati qui</span>
+    </div>
+
+    <div id="data-section" style="display:none">
+        <button class="logout-btn" onclick="handleLogout()">Esci</button>
+        <h2 id="welcome-msg" style="text-align: left; font-size: 18px; color: #27ae60;">Caricamento...</h2>
+        
+        <span class="label-group">Pressione Arteriosa</span>
+        <div style="display:flex; gap:10px;">
+            <input type="number" id="sys" placeholder="Max">
+            <input type="number" id="dia" placeholder="Min">
+        </div>
+
+        <span class="label-group">Battito (BPM) e Glicemia</span>
+        <div style="display:flex; gap:10px;">
+            <input type="number" id="bpm" placeholder="BPM">
+            <input type="number" id="glu" placeholder="mg/dL">
+        </div>
+        <button onclick="sendData()">INVIA DATI AL MEDICO</button>
+
+        <hr style="margin-top:20px; border:0; border-top:1px solid #eee;">
+        <span class="label-group">Chat con il Medico</span>
+        <div id="chat-box-paziente"></div>
+        <div style="display:flex; gap:5px; margin-top:5px;">
+            <input type="text" id="chat-input-paziente" placeholder="Scrivi un messaggio..." style="margin:0;">
+            <button onclick="inviaMessaggioPaziente()" style="width:auto; margin:0; padding:10px 15px; background:#3498db;">Invia</button>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+    import { getDatabase, ref, push, set, get, onValue } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyAtbMN_N41alyj_Mc_L_Uhcrj1fPI_mJx4",
+        authDomain: "clinica-6fcff.firebaseapp.com",
+        databaseURL: "https://clinica-6fcff-default-rtdb.europe-west1.firebasedatabase.app/",
+        projectId: "clinica-6fcff",
+        storageBucket: "clinica-6fcff.appspot.com",
+        appId: "1:122125156174:web:0cd99f0a5105d15155281f"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
+
+    let isLoginMode = true;
+    let nomePazienteCompleto = "";
+
+    window.toggleAuthMode = () => {
+        isLoginMode = !isLoginMode;
+        document.getElementById('auth-title').innerText = isLoginMode ? "Accesso Paziente" : "Registrazione";
+        document.getElementById('reg-fields').style.display = isLoginMode ? "none" : "block";
+        document.getElementById('btn-login').style.display = isLoginMode ? "block" : "none";
+        document.getElementById('btn-reg').style.display = isLoginMode ? "none" : "block";
+        document.getElementById('toggle-auth').innerText = isLoginMode ? "Non hai un account? Registrati" : "Hai un account? Accedi";
+    };
+
+    window.handleAuth = (mode) => {
+        const email = document.getElementById('email').value;
+        const pass = document.getElementById('pass').value;
+        if (mode === 'reg') {
+            const nome = document.getElementById('nome').value;
+            const cognome = document.getElementById('cognome').value;
+            createUserWithEmailAndPassword(auth, email, pass).then((user) => {
+                set(ref(db, 'anagrafica/' + user.user.uid), { nome, cognome });
+            }).catch(err => alert(err.message));
+        } else {
+            signInWithEmailAndPassword(auth, email, pass).catch(err => alert(err.message));
+        }
+    };
+
+    window.handleLogout = () => signOut(auth);
+
+    onAuthStateChanged(auth, (user) => {
+        if(user) {
+            get(ref(db, 'anagrafica/' + user.uid)).then(snap => {
+                const info = snap.val();
+                nomePazienteCompleto = info ? info.nome + " " + info.cognome : user.email;
+                document.getElementById('welcome-msg').innerText = "👤 " + nomePazienteCompleto;
+                document.getElementById('auth-section').style.display = 'none';
+                document.getElementById('data-section').style.display = 'block';
+                attivaChat(user.uid);
+            });
+        } else {
+            document.getElementById('auth-section').style.display = 'block';
+            document.getElementById('data-section').style.display = 'none';
+        }
+    });
+
+    window.sendData = () => {
+        const sys = document.getElementById('sys').value;
+        const dia = document.getElementById('dia').value;
+        const bpm = document.getElementById('bpm').value;
+        const glu = document.getElementById('glu').value;
+        if(!sys || !bpm) return alert("Inserisci dati validi");
+
+        push(ref(db, 'salute_pazienti/' + auth.currentUser.uid), {
+            dataOra: new Date().toLocaleString('it-IT'),
+            pressione: sys + "/" + dia,
+            bpm, glicemia: glu || "N/A", paziente: nomePazienteCompleto
+        }).then(() => {
+            alert("Dati inviati!");
+            document.querySelectorAll('input[type="number"]').forEach(i => i.value = "");
+        });
+    };
+
+    function attivaChat(uid) {
+        onValue(ref(db, 'comunicazioni/' + uid), (snap) => {
+            const box = document.getElementById('chat-box-paziente');
+            box.innerHTML = "";
+            snap.forEach(c => {
+                const m = c.val();
+                const classe = m.mittente === "paziente" ? "msg-paziente" : "msg-medico";
+                box.innerHTML += `<div class="msg ${classe}">${m.testo}</div>`;
+            });
+            box.scrollTop = box.scrollHeight;
+        });
+    }
+
+    window.inviaMessaggioPaziente = () => {
+        const input = document.getElementById('chat-input-paziente');
+        if(!input.value) return;
+        push(ref(db, 'comunicazioni/' + auth.currentUser.uid), {
+            testo: input.value, mittente: "paziente", timestamp: Date.now()
+        }).then(() => input.value = "");
+    };
+</script>
+</body>
+</html>
